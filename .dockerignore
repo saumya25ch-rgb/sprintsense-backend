@@ -1,0 +1,13 @@
+target/
+.idea/
+.git/
+.gitignore
+.gitattributes
+HELP.md
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+Dockerfile
+.dockerignore
