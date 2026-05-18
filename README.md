@@ -259,4 +259,4 @@ These were intentionally deprioritized to keep the submission focused, and are l
 
 ## License
 
-This project is released under the MIT License for hackathon submission. See `LICENSE` if/when added.
+All Rights Reserved. See [`LICENSE`](./LICENSE) for the full terms. The source code is published publicly only to satisfy the hackathon's submission rules; reuse, redistribution, modification, or commercial exploitation without the author's prior written permission is not permitted.
