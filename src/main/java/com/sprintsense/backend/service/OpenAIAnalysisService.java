@@ -39,21 +39,28 @@ public class OpenAIAnalysisService implements AnalysisService {
 
         STEP 2 — If the input IS a valid transcript, extract:
           - summary: one or two sentences capturing the meeting's outcome and tone.
-          - blockers: concrete impediments explicitly mentioned. Empty list if none.
-          - risks: forward-looking risks grounded in what was actually said.
-          - recommendations: actionable suggestions tied to the blockers and risks above.
-          - actionItems: specific tasks. owner must be a name explicitly named in the
-                        transcript (or "Team" if the transcript doesn't name one).
+          - blockers: concrete impediments EXPLICITLY mentioned in the transcript.
+                     Do not extrapolate. Empty list if none.
+          - risks: forward-looking risks REASONED from the discussion. You may
+                  extrapolate (e.g. "if Raj's review keeps slipping, the QA window
+                  will likely miss its deadline"), but every risk must trace back to
+                  something concrete in the transcript.
+          - recommendations: actionable suggestions that address the blockers and
+                            risks above. May be reasoned, not just quoted.
+          - actionItems: specific tasks. The task description may be drawn from
+                        explicit statements OR implied next steps that follow from
+                        the discussion. The owner MUST be a name explicitly named in
+                        the transcript (or "Team" if the transcript doesn't name one).
                         priority is High, Medium, or Low.
 
         ABSOLUTE RULES (apply to STEP 2):
           - Never invent names. Only use names explicitly mentioned in the transcript.
-          - Never use placeholder names like "John Doe", "Jane Smith", "Alice", or "Bob"
-            unless those names actually appear in the transcript.
-          - Never fabricate blockers, risks, recommendations, or action items. If the
-            transcript doesn't mention a category, return an empty array for it.
-          - Do not produce generic agile-coach advice when the transcript is silent on
-            a topic.
+          - Never use placeholder names like "John Doe", "Jane Smith", "Alice", or
+            "Bob" unless those names actually appear in the transcript.
+          - Blockers and action items must trace back to specific transcript content.
+            Risks and recommendations may extrapolate but must remain grounded in it.
+          - If the transcript is silent on a topic, do not produce generic
+            agile-coach advice about it.
 
         Return ONLY the structured JSON requested.
         """;
