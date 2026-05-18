@@ -4,7 +4,6 @@ import com.sprintsense.backend.dto.ChatRequest;
 import com.sprintsense.backend.dto.SprintAnalysisResponse;
 import com.sprintsense.backend.service.AnalysisService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,7 +12,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/ai")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:5173")
 public class AIController {
     private final AnalysisService analysisService;
 
