@@ -2,9 +2,9 @@
 
 > AI-powered sprint retrospective analysis. Paste a messy sprint-meeting transcript, get back a prioritized list of blockers, risks, recommendations, and assigned action items — so no idea gets lost and no task falls through the cracks.
 
-**Live demo:** https://sprintsense-ai.vercel.app
+**Live demo:** https://sprintsense-ai.vercel.app — paste a transcript and try it in the browser
 **Live API:** https://sprintsense-backend-2.onrender.com
-**Frontend repo:** *(link to be added by team)*
+**Frontend repo:** https://github.com/saumya25ch-rgb/sprintsense-ai
 
 ---
 
@@ -61,6 +61,18 @@ Sprint reviews and retros are where teams accumulate the most actionable signal 
 ```
 
 The `mock` profile is the default; it serves canned responses with no network calls, so the app boots and serves traffic immediately on any host without any LLM credentials. Switching `SPRING_PROFILES_ACTIVE=github` (plus `GITHUB_TOKEN`) flips it to live LLM mode without any code change.
+
+---
+
+## Engineering highlights
+
+What this submission demonstrates beyond a working endpoint:
+
+- **Structured-output binding, not regex parsing.** Spring AI's `ChatClient` binds the LLM's JSON response directly to typed Java DTOs (`SprintAnalysisResponse`, `ActionItem`). If the model returns malformed JSON, the request fails cleanly rather than producing half-parsed garbage.
+- **Graceful degradation by design.** The `mock` profile is the default. The app boots and serves valid, structured responses on any host with zero credentials configured — useful for cold starts, CI, and judges who want to inspect the API surface without provisioning a PAT.
+- **Production-hardened request path.** `@Valid`/`@NotBlank` on inputs, `@RestControllerAdvice` global exception handler that strips stack traces and internal messages, and a per-IP rate limiter (`30 req/min` on `/api/ai/*`, configurable, reads `X-Forwarded-For` so it works behind Render's load balancer). Spring AI's `NonTransientAiException` is mapped to `502 Bad Gateway` instead of leaking the upstream.
+- **Zero-trust deploy.** No secrets in source control. All credentials are injected via Render environment variables; the README documents the classic-PAT gap so judges don't burn time on a fine-grained token that silently won't work with Models inference.
+- **Multi-stage Docker build.** JDK builder → JRE runtime, non-root user, slim final image. Render builds from the Dockerfile, not a buildpack.
 
 ---
 
@@ -218,10 +230,9 @@ src/main/resources/
 
 Per the hackathon rules, the following AI tools were used during development:
 
-- **Claude Code** (Anthropic's CLI) — used as a pair-programming assistant for Spring Boot scaffolding, Spring AI integration, profile configuration, deployment troubleshooting, and writing this README.
-- **GitHub Copilot** — *(declare here if used by other team members)*
+- **Claude Code** (Anthropic's CLI) — pair-programming assistant for Spring Boot scaffolding, Spring AI integration, profile configuration, deployment troubleshooting, hardening (validation, exception handling, rate limiting), and this README.
 
-All final design choices, prompt engineering, profile structure, and integration code were authored and reviewed by the team. No code was committed without human review.
+All final design choices, prompt engineering, profile structure, and integration code were authored and reviewed by me. No code was committed without human review.
 
 ---
 
@@ -229,18 +240,17 @@ All final design choices, prompt engineering, profile structure, and integration
 
 These were intentionally deprioritized to keep the submission focused, and are listed transparently for the judges:
 
-- **Persistence (MongoDB)** — currently the dependency is present; sprint-over-sprint trend analysis ("the same blocker has appeared in 4 sprints") is the natural next feature.
+- **Persistence (MongoDB)** — the dependency is wired into `pom.xml` but no repository layer yet; sprint-over-sprint trend analysis ("this blocker has now appeared in 4 sprints") is the natural next feature.
 - **Microsoft Graph integration** — pulling Teams meeting transcripts directly, removing the copy-paste step.
 - **Push to Microsoft Planner / Azure DevOps** — auto-create action items as work items so they actually get tracked.
 - **Multi-agent decomposition** — separate analyzer / risk-scorer / action-extractor agents (would also align with the *Agent Swarms* theme).
-- **Input validation, global exception handling, rate limiting** — hardening for non-demo traffic.
 
 ---
 
 ## Team
 
-- **Saumya Chirania** — *(role)*
-- *(add teammates here)*
+Solo submission
+- **Saumya Chirania** — full-stack build: backend (Spring Boot, Spring AI, GitHub Models integration, hardening), frontend (React + Vite), deployment (Render + Vercel), and project README.
 
 ---
 
@@ -253,7 +263,8 @@ These were intentionally deprioritized to keep the submission focused, and are l
 - [x] README with project description, setup, dependencies, team details
 - [x] AI tools used during development disclosed
 - [x] No secrets, credentials, or API keys committed
-- [ ] *(team members and demo video to be added before final submission)*
+- [x] Team details documented (solo submission)
+- [ ] Demo video — to be recorded before final submission
 
 ---
 
