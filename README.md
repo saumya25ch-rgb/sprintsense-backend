@@ -12,33 +12,29 @@
 
 **Theme:** *AI at Work — Productivity & Teamwork Reimagined.*
 
-Sprint reviews and retros are where teams accumulate the most actionable signal — and where most of it is lost the moment the meeting ends. Notes get scattered, action items live in someone's head, follow-ups slip. SprintSense ingests the raw meeting transcript and produces a structured, judgement-ready summary that a team can act on in seconds.
+Sprint retros are where teams accumulate the most actionable signal — and where most of it is lost the moment the meeting ends. SprintSense ingests the raw transcript and produces a structured, judgement-ready summary the team can act on in seconds.
 
-**Microsoft AI stack components used**
+**Microsoft AI stack components**
 
-| Component | Role in this project |
+| Component | Role |
 | --- | --- |
-| **GitHub Models** (Microsoft-hosted) | LLM inference for both the analysis and chat endpoints. Backed by Azure OpenAI infrastructure. |
-| **Spring AI** (Azure-aligned ecosystem) | `ChatClient` abstraction, structured-output binding from LLM JSON straight into Java DTOs. |
-| **GitHub** | Source hosting, secret scanning, and CI surface for the public submission repo. |
-| **GitHub Copilot / Claude Code** | AI pair-programming during development (see *AI tools disclosure* below). |
+| **GitHub Models** (Microsoft-hosted) | LLM inference for `/analyze` and `/chat`, backed by Azure OpenAI infrastructure. |
+| **Spring AI** (Azure-aligned) | `ChatClient` abstraction; structured-output binding from LLM JSON into typed Java DTOs. |
+| **GitHub** | Public source hosting, secret scanning, submission surface. |
 
 ---
 
 ## What it does
 
-- **`POST /api/ai/analyze`** — accepts a sprint-meeting transcript (plain text), returns structured JSON:
-  - `summary` — one-line outcome
-  - `blockers` — concrete impediments the team hit
-  - `risks` — forward-looking risks for the next sprint
-  - `recommendations` — actionable suggestions tied to the blockers and risks
-  - `actionItems` — specific tasks with `owner` (real name extracted from the transcript) and `priority` (High/Medium/Low)
-- **`POST /api/ai/chat`** — answers follow-up questions against a prior analysis (e.g. *"Which blocker is most urgent and why?"*). The LLM reasons over the analysis JSON; no retrieval, no keyword matching.
-- **`GET /api/health`** — liveness probe for the host platform.
+- **`POST /api/ai/analyze`** — accepts a transcript (plain text), returns structured JSON: `summary`, `blockers`, `risks`, `recommendations`, and `actionItems` (each with `task`, `owner` extracted from the transcript, and `priority` of High/Medium/Low).
+- **`POST /api/ai/chat`** — answers follow-up questions reasoning over a prior analysis (e.g. *"Which blocker is most urgent and why?"*). No retrieval, no keyword matching — the LLM reasons over the structured JSON as context.
+- **`GET /api/health`** — liveness probe.
+
+See the live API for full request/response examples.
 
 ---
 
-## How it works
+## Architecture
 
 ```
 +----------------------------+
@@ -48,187 +44,80 @@ Sprint reviews and retros are where teams accumulate the most actionable signal 
               v
 +----------------------------+
 | Spring Boot 3.5 on Render  |  https://sprintsense-backend-2.onrender.com
-|                            |
 |  - github profile (real)   |  + Spring AI ChatClient
-|  - mock profile (offline)  |  + structured-output binding -> Java DTO
+|  - mock profile (offline)  |  + structured-output -> DTO
 +-------------+--------------+
               | Authorization: Bearer $GITHUB_TOKEN
               v
 +----------------------------+
 | GitHub Models              |  openai/gpt-4o-mini
-| (Microsoft AI stack)       |  hosted on Azure OpenAI infra
+| (MS AI stack)              |  on Azure OpenAI infra
 +----------------------------+
 ```
 
-The `mock` profile is the default; it serves canned responses with no network calls, so the app boots and serves traffic immediately on any host without any LLM credentials. Switching `SPRING_PROFILES_ACTIVE=github` (plus `GITHUB_TOKEN`) flips it to live LLM mode without any code change.
+The `mock` profile is the default: serves canned responses with no network calls, so the app boots without credentials. `SPRING_PROFILES_ACTIVE=github` plus `GITHUB_TOKEN` flips to live LLM mode without code changes.
 
 ---
 
 ## Engineering highlights
 
-What this submission demonstrates beyond a working endpoint:
-
-- **Structured-output binding, not regex parsing.** Spring AI's `ChatClient` binds the LLM's JSON response directly to typed Java DTOs (`SprintAnalysisResponse`, `ActionItem`). If the model returns malformed JSON, the request fails cleanly rather than producing half-parsed garbage.
-- **Graceful degradation by design.** The `mock` profile is the default. The app boots and serves valid, structured responses on any host with zero credentials configured — useful for cold starts, CI, and judges who want to inspect the API surface without provisioning a PAT.
-- **Production-hardened request path.** `@Valid`/`@NotBlank` on inputs, `@RestControllerAdvice` global exception handler that strips stack traces and internal messages, and a per-IP rate limiter (`30 req/min` on `/api/ai/*`, configurable, reads `X-Forwarded-For` so it works behind Render's load balancer). Spring AI's `NonTransientAiException` is mapped to `502 Bad Gateway` instead of leaking the upstream.
-- **Zero-trust deploy.** No secrets in source control. All credentials are injected via Render environment variables; the README documents the classic-PAT gap so judges don't burn time on a fine-grained token that silently won't work with Models inference.
-- **Multi-stage Docker build.** JDK builder → JRE runtime, non-root user, slim final image. Render builds from the Dockerfile, not a buildpack.
+- **Structured-output binding, not regex parsing.** Spring AI's `ChatClient` binds LLM JSON directly to typed Java DTOs; malformed responses fail cleanly instead of producing half-parsed output.
+- **Graceful degradation.** Mock profile is the default — judges can boot and inspect the API surface without provisioning a token.
+- **Production-hardened request path.** `@Valid`/`@NotBlank` inputs, `@RestControllerAdvice` global handler that strips stack traces, per-IP rate limit (`30 req/min` on `/api/ai/*`, reads `X-Forwarded-For` so it works behind Render's load balancer). `NonTransientAiException` maps to `502 Bad Gateway`.
+- **Zero-trust deploy.** No secrets in source control; credentials via Render env vars only. Classic-PAT requirement documented — fine-grained PATs have a known gap for Models inference.
 
 ---
 
 ## Quick start
 
-### Use the deployed API
-
-```bash
-curl -X POST https://sprintsense-backend-2.onrender.com/api/ai/analyze \
-  -H 'Content-Type: text/plain' \
-  -d "Sprint 14: Alice finished the auth refactor but is blocked on Bob's review. Carol flagged the Stripe sandbox timing out. Eve needs design review on the analytics dashboard by Friday."
-```
-
-### Run locally with the mock profile (no credentials needed)
-
+**Run locally with the mock profile** (no credentials needed):
 ```bash
 git clone https://github.com/saumya25ch-rgb/sprintsense-backend.git
 cd sprintsense-backend
-./mvnw spring-boot:run
-# defaults to spring.profiles.active=mock; serves canned responses on :8080
+./mvnw spring-boot:run          # serves canned responses on :8080
 ```
 
-### Run locally with real LLM
-
-You need a GitHub **classic** personal access token (fine-grained tokens have a known gap for Models inference):
-
-1. Generate a classic PAT at <https://github.com/settings/tokens/new> (no specific scopes required)
-2. Export it and start the app on the `github` profile:
-
+**Run with live LLM:** generate a GitHub *classic* PAT at <https://github.com/settings/tokens/new> (no specific scopes required), then:
 ```bash
 export GITHUB_TOKEN='ghp_...'
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=github
+```
+
+**Hit the deployed API:**
+```bash
+curl -X POST https://sprintsense-backend-2.onrender.com/api/ai/analyze \
+  -H 'Content-Type: text/plain' \
+  -d "Sprint 14: Alice finished the auth refactor but is blocked on Bob's review."
 ```
 
 ---
 
 ## Configuration
 
-All configuration is environment-variable-driven. **No secrets are committed.**
+All config is env-var driven. **No secrets are committed.**
 
-| Variable | Purpose | Required? | Default |
+| Variable | Purpose | Required | Default |
 | --- | --- | --- | --- |
-| `SPRING_PROFILES_ACTIVE` | `github` for live LLM, `mock` for canned responses | No | `mock` |
-| `GITHUB_TOKEN` | Classic GitHub PAT for GitHub Models inference | Only with `github` profile | — |
-| `GITHUB_MODEL` | Override the model id (e.g. `openai/gpt-4.1`) | No | `openai/gpt-4o-mini` |
-| `SPRINTSENSE_CORS_ALLOWED_ORIGINS` | Comma-separated allowlist for browser origins | No | `http://localhost:5173` |
+| `SPRING_PROFILES_ACTIVE` | `github` (live LLM) or `mock` (canned) | No | `mock` |
+| `GITHUB_TOKEN` | Classic GitHub PAT for Models inference | With `github` profile | — |
+| `GITHUB_MODEL` | Model id override | No | `openai/gpt-4o-mini` |
+| `SPRINTSENSE_CORS_ALLOWED_ORIGINS` | Comma-separated browser origin allowlist | No | `http://localhost:5173` |
+| `SPRINTSENSE_RATELIMIT_REQUESTS_PER_MINUTE` | Per-IP rate limit on `/api/ai/*` | No | `30` |
 | `PORT` | Bind port (Render injects this) | No | `8080` |
 
-### Production env on Render
+---
 
-```
-SPRING_PROFILES_ACTIVE=github
-GITHUB_TOKEN=ghp_...
-SPRINTSENSE_CORS_ALLOWED_ORIGINS=https://sprintsense-ai.vercel.app,http://localhost:5173
-```
+## Tech stack / dependencies
+
+- **Java 17**, **Spring Boot 3.5.3**
+- **Spring AI 1.0.0** with the OpenAI-compatible starter, pointed at GitHub Models
+- **Maven** (wrapper included)
+- **Multi-stage Dockerfile** — JDK builder → JRE runtime, non-root user
+- **Render** (Docker, free tier) for backend; **Vercel** (React + Vite) for frontend
 
 ---
 
-## API
-
-### `POST /api/ai/analyze`
-
-**Request**
-```
-Content-Type: text/plain
-
-Sprint 14 standup: Alice closed the auth refactor but is blocked on
-Bob's review for two days. Carol flagged the Stripe sandbox keeps
-timing out. Eve raised the analytics dashboard needs design review
-by Friday.
-```
-
-**Response** (`200 OK`)
-```json
-{
-  "summary": "The team made progress with Alice completing the auth refactor, but faced blockers that could impact the sprint's timeline.",
-  "blockers": [
-    "Alice is blocked on Bob's review for two days.",
-    "The Stripe sandbox keeps timing out."
-  ],
-  "risks": [
-    "If Bob does not review Alice's PR soon, it could delay QA and subsequent tasks.",
-    "The analytics dashboard design review needs to be completed by Friday to avoid slipping."
-  ],
-  "recommendations": [
-    "Bob should prioritize reviewing Alice's PR to unblock her work.",
-    "Investigate the Stripe sandbox timeout issue."
-  ],
-  "actionItems": [
-    {"task": "Review Alice's PR.", "owner": "Bob", "priority": "High"},
-    {"task": "Investigate the Stripe sandbox timeout issue.", "owner": "Team", "priority": "Medium"},
-    {"task": "Ensure the analytics dashboard design review is completed by Friday.", "owner": "Eve", "priority": "High"}
-  ]
-}
-```
-
-### `POST /api/ai/chat`
-
-**Request**
-```json
-{
-  "question": "Which blocker should the team tackle first and why?",
-  "analysisData": { /* prior SprintAnalysisResponse */ }
-}
-```
-
-**Response** — plain-text natural-language answer reasoning across the supplied analysis.
-
-### `GET /api/health`
-
-Returns `200 SprintSense Backend is up and running!`.
-
----
-
-## Project structure
-
-```
-src/main/java/com/sprintsense/backend
-├── BackendApplication.java
-├── config/
-│   └── WebConfig.java                  # CORS, env-driven allowlist
-├── controller/
-│   ├── AIController.java               # /api/ai/analyze, /api/ai/chat
-│   └── HealthController.java           # /api/health
-├── dto/
-│   ├── ActionItem.java
-│   ├── ChatRequest.java
-│   └── SprintAnalysisResponse.java
-└── service/
-    ├── AnalysisService.java            # interface
-    ├── MockAIService.java              # @Profile("mock"), offline-safe demo
-    └── OpenAIAnalysisService.java      # @Profile("!mock"), real LLM via Spring AI
-
-src/main/resources/
-├── application.properties              # defaults; profile=mock
-├── application-github.properties       # GitHub Models config
-└── application-mock.properties         # excludes OpenAI auto-config for clean boot
-```
-
----
-
-## Tech stack
-
-- **Language:** Java 17
-- **Framework:** Spring Boot 3.5.3
-- **AI:** Spring AI 1.0.0 with the OpenAI-compatible starter, pointed at GitHub Models
-- **Build:** Maven (wrapper included)
-- **Container:** Multi-stage Dockerfile (JDK builder → JRE runtime, non-root user)
-- **Hosting:** Render (Docker, free tier)
-- **Frontend:** React + Vite on Vercel (separate repo)
-
----
-
-## AI tools disclosure
-
-Per the hackathon rules, the following AI tools were used during development:
+## AI tools used
 
 - **Claude Code** (Anthropic's CLI) — pair-programming assistant for Spring Boot scaffolding, Spring AI integration, profile configuration, deployment troubleshooting, hardening (validation, exception handling, rate limiting), and this README.
 
@@ -236,38 +125,24 @@ All final design choices, prompt engineering, profile structure, and integration
 
 ---
 
-## Roadmap / Not yet implemented
+## Roadmap
 
-These were intentionally deprioritized to keep the submission focused, and are listed transparently for the judges:
+Intentionally deprioritized for this submission:
 
-- **Persistence (MongoDB)** — the dependency is wired into `pom.xml` but no repository layer yet; sprint-over-sprint trend analysis ("this blocker has now appeared in 4 sprints") is the natural next feature.
-- **Microsoft Graph integration** — pulling Teams meeting transcripts directly, removing the copy-paste step.
-- **Push to Microsoft Planner / Azure DevOps** — auto-create action items as work items so they actually get tracked.
-- **Multi-agent decomposition** — separate analyzer / risk-scorer / action-extractor agents (would also align with the *Agent Swarms* theme).
+- **Persistence (MongoDB)** — dependency is wired; sprint-over-sprint trend analysis ("this blocker has appeared in 4 sprints") is the natural next step.
+- **Microsoft Graph integration** — pull Teams transcripts directly, removing the copy-paste step.
+- **Microsoft Planner / Azure DevOps push** — auto-create action items as tracked work items.
 
 ---
 
 ## Team
 
-Solo submission
-- **Saumya Chirania** — full-stack build: backend (Spring Boot, Spring AI, GitHub Models integration, hardening), frontend (React + Vite), deployment (Render + Vercel), and project README.
-
----
-
-## Submission compliance checklist
-
-- [x] Built between 3 May 2026 and 30 June 2026
-- [x] Public GitHub repo accessible to judges
-- [x] Microsoft AI stack used (GitHub Models)
-- [x] Live, judge-accessible URL
-- [x] README with project description, setup, dependencies, team details
-- [x] AI tools used during development disclosed
-- [x] No secrets, credentials, or API keys committed
-- [x] Team details documented (solo submission)
-- [ ] Demo video — to be recorded before final submission
+| Name | Role |
+| --- | --- |
+| **Saumya Chirania** | Solo build — backend (Spring Boot, Spring AI, GitHub Models integration, hardening), frontend (React + Vite), deployment (Render + Vercel), and documentation |
 
 ---
 
 ## License
 
-All Rights Reserved. See [`LICENSE`](./LICENSE) for the full terms. The source code is published publicly only to satisfy the hackathon's submission rules; reuse, redistribution, modification, or commercial exploitation without the author's prior written permission is not permitted.
+All Rights Reserved. See [`LICENSE`](./LICENSE). Source is published publicly only to satisfy the hackathon's submission rules; reuse, redistribution, modification, or commercial exploitation without prior written permission is not permitted.
